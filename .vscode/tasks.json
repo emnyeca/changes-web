@@ -1,0 +1,1 @@
+{"version":"2.0.0","tasks":[{"label":"Local app","type":"npm","script":"dev"},{"label":"Build app","type":"npm","script":"build","group":"build"}]}
