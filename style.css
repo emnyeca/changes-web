@@ -1,1 +1,26 @@
-:root{font-family:"Source Sans 3",system-ui,sans-serif;color:#222838;background:#f7f6f1}main{max-width:66rem;margin:4rem auto;padding:0 2rem}header,footer{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}h1{font-size:clamp(2rem,6vw,4rem);letter-spacing:-.06em}section,article,footer{border-top:1px solid #aaa;padding:1.5rem 0}label{display:grid;gap:.6rem}input,button,select{font:inherit;padding:.5rem}button{cursor:pointer}ul{padding:0;list-style:none}li{margin:.35rem 0}.bar{display:inline-block;border-left:2px solid #988aaa;padding:.7rem 1rem}
+﻿:root {
+  font-family: "Source Sans 3", "Segoe UI", sans-serif;
+  color: #302a3c; background: #f6f3ed; line-height: 1.5;
+}
+* {box-sizing:border-box}
+body {margin:0}
+main {max-width:76rem; margin:0 auto; padding:2rem clamp(1rem,4vw,4rem) 4rem}
+header {display:flex; align-items:center; justify-content:space-between; gap:2rem; border-bottom:3px solid #483954}
+h1 {font-size:clamp(2.3rem,6vw,4.8rem); letter-spacing:-.065em; margin:.3em 0}
+h2 {font-size:2rem; margin:.35em 0}
+section, article, footer, main>details {border-bottom:1px solid #c8c0c4; padding:1.1rem 0}
+label {display:inline-grid; vertical-align:middle; gap:.25rem; margin:.35rem .8rem .35rem 0; font-size:.92rem}
+label span,summary,th {font-weight:650}
+input,button,select,textarea {font:inherit; color:inherit; padding:.44rem .65rem; border:1px solid #aaa2ad; border-radius:.35rem; background:#fffdf8; max-width:100%}
+textarea {width:22rem} input[type=number]{width:7rem}
+button,summary {cursor:pointer} button {margin:.2rem .3rem .2rem 0}
+button:hover,button:focus-visible {background:#e8e1ed}
+button:disabled {opacity:.6}
+ul {padding:0; list-style:none; display:flex; flex-wrap:wrap; gap:.4rem; max-height:16rem; overflow:auto}
+.bar {display:inline-block; padding:.7rem 1rem; border-left:2px solid #8d77a3; background:#ede7ef; margin:.25rem 0}
+details {margin:.7rem 0}
+article details {padding:.8rem; background:#ede9e3; border-radius:.4rem}
+canvas {display:block; background:#fffcf8; border:1px solid #d0c7cf}
+table {border-collapse:collapse; margin:1rem 0}
+td,th {text-align:left; padding:.3rem 1.3rem .3rem 0; border-bottom:1px solid #cfc7c8}
+a {color:#604272} [role=status] {white-space:pre-wrap; overflow-wrap:anywhere}
