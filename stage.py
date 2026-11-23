@@ -59,7 +59,7 @@ shutil.copyfile(ROOT / "LICENSE", PUBLIC / "LICENSE.txt")
 with zipfile.ZipFile(PUBLIC / "changes-source.zip", "w", zipfile.ZIP_DEFLATED) as source:
     def add(path, name):
         source.writestr(zipfile.ZipInfo(str(name)), path.read_bytes(), zipfile.ZIP_DEFLATED)
-    for name in ("README.md","LICENSE","package.json","package-lock.json","stage.py","engine.py",
+    for name in ("README.md","LICENSE","package.json","package-lock.json","stage.py","package_release.py","engine.py",
                  "fm_parts.py","app.js","studio.js","worker.mjs","midi.js","fm_library.js","library.js","import_files.js",
                  "index.html","style.css","verify.mjs","verify-midi.mjs","parity.mjs","verify-fm.mjs","verify-studio.mjs"):
         add(ROOT/name,name)

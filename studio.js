@@ -40,6 +40,8 @@ export function studio(root,song,lang,preferences,save,edit) {
   transpose.type='number'; transpose.min=-24;transpose.max=24;transpose.value=song.transpose||0;
   const tempo=field(panel,t('Performance BPM','演奏BPM'),element('input'));
   tempo.type='number';tempo.min=1;tempo.max=999;tempo.value=song.tempo||'';tempo.placeholder=t('From chart','譜面のテンポ');
+  const names={cloud_tracks:'Cloud 6声のトラック（0で無効）',bass_track:'Bassトラック',chord_track:'Chordトラック',cloud_center_midi:'Cloud中心音（MIDI）',bass_center_midi:'Bass基準音（MIDI）',chord_center_midi:'Chord中心音（MIDI）',cloud_spread_min:'Cloud最小音程幅',cloud_spread_max:'Cloud最大音程幅',cloud_average_tolerance:'Cloud平均音高の許容幅',cloud_trigger_policy:'Cloudトリガー',bass_trigger_policy:'Bassトリガー',chord_trigger_policy:'Chordトリガー',pattern_change_policy:'パターン遷移'};
+  const policies={auto_song_mode:'ソングモード用に自動設定',off:'オフ',hold_until_change:'変化まで保持',retrigger:'毎回発音'};
   const settings={...defaults,...preferences.settings};
   const details=element('details');
   details.append(element('summary',t('Tracks, ranges and triggers','トラック・音域・トリガー')));
@@ -51,10 +53,10 @@ export function studio(root,song,lang,preferences,save,edit) {
     input.value=Array.isArray(value)?value.map(v=>v??0).join(','):value??0;
     if(key.endsWith('_policy')) {
       const values=key==='pattern_change_policy'?['auto_song_mode','off']:['hold_until_change','retrigger'];
-      const policy=field(details,key.replaceAll('_',' '),select(values.map(v=>[v,v]),value));
+      const policy=field(details,t(key.replaceAll('_',' '),names[key]),select(values.map(v=>[v,t(v.replaceAll('_',' '),policies[v])]),value));
       controls.push([key,policy]);continue;
     }
-    field(details,key.replaceAll('_',' '),input);
+    field(details,t(key.replaceAll('_',' '),names[key]),input);
     controls.push([key,input]);
   }
   function readSettings() {
@@ -70,39 +72,53 @@ export function studio(root,song,lang,preferences,save,edit) {
   }
   function reset() {controller?.abort();stop?.();stop=null;worker?.terminate();worker=null;generated=null;output.replaceChildren();}
   panel.oninput=reset;
-  button(panel,'Generate','生成',async()=>{
+  button(panel,'Edit chart','譜面を編集',()=>compute(true));
+  button(panel,'Generate','生成',()=>compute(false));
+  async function compute(inspect) {
     reset();
     const settings=readSettings();
-    await save({settings,mode:mode.value});
+    if(!inspect)await save({settings,mode:mode.value});
+    if(closed)return;
     status.textContent=t('Generating…','生成中…');
     worker=new Worker(new URL('worker.mjs',document.baseURI),{type:'module'});
     worker.onerror=e=>{status.textContent=e.message;};
     worker.onmessage=({data})=>{
       worker.terminate();worker=null;
       if(data.error){status.textContent=data.error;return;}
+      if(inspect){status.textContent='';editorFor(data.result,true);return;}
       generated=data.result;
       status.textContent=generated.warnings.join(' ');
       show(settings);
     };
-    worker.postMessage({cells:song.cells,tempo:Number(tempo.value)||undefined,midi:song.midi,edits:song.edits,sections:song.sections,transpose:Number(transpose.value),id:song.id,title:song.title,xml:song.xml,settings,mode:mode.value});
-  });
-  function show(routing) {
-    const result=generated;
+    worker.postMessage({action:inspect?'inspect':'generate',cells:song.cells,tempo:Number(tempo.value)||undefined,midi:song.midi,edits:song.edits,sections:song.sections,transpose:Number(transpose.value),id:song.id,title:song.title,xml:song.xml,settings,mode:mode.value});
+  }
+  function editorFor(original,open) {
     const editor=element('details');
     editor.append(element('summary',t('Edit chords and sections','コード・セクションを編集')));
-    const sections=[...new Set(result.original.measures.map(m=>m.section_id).filter(Boolean))];
+    editor.open=open;
+    const sections=[...new Set(original.measures.map(m=>m.section_id).filter(Boolean))];
     const boxes=sections.map(section=>{
       const input=field(editor,section,element('input'));input.type='checkbox';input.checked=!song.sections || song.sections.includes(section);return input;
     });
     const symbols=[];
-    for(const measure of result.original.measures){
+    for(const measure of original.measures){
       for(const event of measure.harmony){
         const input=field(editor,String(measure.number)+' · '+event.offset_quarters,element('input'));
         input.value=event.symbol; symbols.push([event.id,input]);
       }
     }
     button(editor,'Save edits','編集を保存',()=>edit({edits:Object.fromEntries(symbols.map(([id,input])=>[id,input.value.trim()])),sections:boxes.every(b=>b.checked)?null:sections.filter((_,i)=>boxes[i].checked),transpose:Number(transpose.value),tempo:Number(tempo.value)||undefined}));
-    output.append(editor,element('h3','Harmony Cloud'));
+    output.append(editor);
+  }
+  function show(routing) {
+    const result=generated;
+    const grid=root.querySelector('.chart-grid');
+    grid.replaceChildren();
+    for(const measure of result.song.measures) {
+      const cell=element('span',measure.harmony.map(h=>h.symbol).join('  ')||'·');cell.className='bar';grid.append(cell);
+    }
+    editorFor(result.original,false);
+    output.append(element('h3','Harmony Cloud'));
     const graph=element('canvas');
     graph.width=760;graph.height=180;graph.style.maxWidth='100%';
     const ctx=graph.getContext('2d');
@@ -153,6 +169,10 @@ export function studio(root,song,lang,preferences,save,edit) {
     };
     button(output,'Preview','試聴',async()=>{const p=port();stop?.();await p.open();if(!closed&&result===generated)stop=preview(p,result.timeline,routing);});
     button(output,'Stop','停止',()=>{stop?.();stop=null;});
+    const existing=field(output,t('Optional Digitone pattern file (.syx)','既存のDigitoneパターン（任意・.syx）'),element('input'));
+    existing.type='file';existing.accept='.syx';
+    const range=field(output,t('Overwrite area selected on Digitone II','Digitone II本体で選んだ上書き範囲'),element('input'));
+    range.placeholder='A01–A02';
     const target=field(output,t('Send to','送信先'),select([['digitone','Digitone II'],['fm','Emiuet Session FM-1']],'digitone'));
     async function fm(remove) {
       const p=port(),input=access?.inputs.get(inputs.value);
@@ -165,13 +185,29 @@ export function studio(root,song,lang,preferences,save,edit) {
     }
     const remove=button(output,'Delete song from FM-1','FM-1からこの曲を削除',()=>fm(true));
     remove.hidden=true;
-    target.onchange=()=>{remove.hidden=target.value!=='fm';};
+    target.onchange=()=>{remove.hidden=target.value!=='fm';existing.parentNode.hidden=!remove.hidden;range.parentNode.hidden=!remove.hidden;};
     button(output,'Send','送信',async()=>{
       if(target.value==='fm')return fm(false);
       const p=port();
-      if(!confirm(t('Confirm the overwrite area on your Digitone II','Digitone II 本体で上書き先を確認してください')+'\n'+p.name+'\n'+result.files.map(f=>f.name).join(', ')))return;
+      const area=range.value.trim();
+      if(!area)throw Error(t('Enter the test area selected on the instrument','本体で選んだテスト範囲を入力してください'));
+      let outgoing=packets, description=result.files.map(f=>f.name).join(', ');
+      if(existing.files.length) {
+        const file=existing.files[0];
+        if(file.size>114118*128)throw Error(t('File too large','ファイルが大きすぎます'));
+        outgoing=messages(new Uint8Array(await file.arrayBuffer()));
+        for(const frame of outgoing) {
+          const header=[0xf0,0,0x20,0x3c,0x15];
+          if(frame.length!==114118 || !header.every((v,i)=>frame[i]===v) || frame[6]!==0x50)
+            throw Error(t('Unsupported Digitone II pattern format','未対応のDigitone IIパターン形式です'));
+          let sum=0;for(let i=10;i<114113;i++)sum+=frame[i];
+          if((sum&16383)!==((frame[114113]<<7)|frame[114114]))throw Error(t('Pattern checksum mismatch','パターンのチェックサムが一致しません'));
+        }
+        description=file.name+' · '+outgoing.length;
+      }
+      if(!confirm(t('Confirm the overwrite area on your Digitone II','Digitone II 本体で上書き先を確認してください')+'\n'+p.name+'\n'+area+'\n'+description))return;
       stop?.();stop=null;controller=new AbortController();
-      await sendPatterns(p,packets,controller.signal);
+      await sendPatterns(p,outgoing,controller.signal);
       status.textContent=t('Send requested. Verify placement and playback on the instrument.','送信を要求しました。本体で配置と再生を確認してください。');
     });
   }

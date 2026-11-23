@@ -56,7 +56,8 @@ function render() {
   const title = document.createElement('h2');
   title.textContent = song.title;
   score.append(title);
-  if(song.cells) { const cells=document.createElement('p'); cells.textContent=song.cells.join(' ');score.append(cells); }
+  const grid=document.createElement('div');grid.className='chart-grid';score.append(grid);
+  if(song.cells) { const cells=document.createElement('p'); cells.textContent=song.cells.join(' ');grid.append(cells); }
   for (const bar of song.xml?parseScore(song.xml).querySelectorAll('part:first-of-type > measure'):[]) {
     const cell = document.createElement('span');
     cell.className='bar';
@@ -66,7 +67,7 @@ function render() {
       const accidental = ({'-2':'bb','-1':'b','0':'','1':'#','2':'##'})[alter] ?? '';
       return (h.querySelector('root-step')?.textContent || '') + accidental + (kind?.getAttribute('text') ?? kind?.textContent ?? '');
     }).join('  ') || '·';
-    score.append(cell);
+    grid.append(cell);
   }
   const manage=document.createElement('div');
   const rename=document.createElement('button');

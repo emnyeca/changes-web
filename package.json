@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build --base=./",
     "predev": "python stage.py",
-    "prebuild": "python stage.py"
+    "prebuild": "python stage.py",
+    "package": "npm run build && python package_release.py"
   },
   "repository": {
     "type": "git",

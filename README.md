@@ -1,4 +1,4 @@
-﻿# EUB Changes Web
+# EUB Changes Web
 
 Import or write a chord chart, adjust the harmony, preview it over MIDI, and send the resulting parts to Digitone II or Emiuet Session FM-1. Charts and settings are stored in IndexedDB. Export a backup to move between browsers.
 
@@ -24,9 +24,11 @@ With Chrome installed and the app running, run node verify.mjs, node verify-stud
 | Library | Search, select, rename, edit chords, delete, restore backup, and persist language. A fresh Chrome profile restored an exported library. |
 | Compose | Text entry uses the desktop editor model with bar lines, section boundaries and repeat tokens. |
 | Arrangement | Cloud, Bass and Chord share the desktop renderer, six-voice graph, track routing, centers, spread, triggers, section filter, transpose and pattern-change policy. |
-| Pattern export | The desktop Linear Auto Split and Bundle by Section planners supply the names, timing and steps. Browser and native Python matched the parsed model, notes, graph, plan and every SysEx byte for a four-bar chart. |
+| Pattern export | The desktop Linear Auto Split and Bundle by Section planners supply the names, timing and steps. Browser and native Python matched the parsed model, notes, graph, plan and every SysEx byte for a four-bar chart, a routed and transposed section, and a 40-bar chart split at steps 120/121. |
 | Preview and USB | Web MIDI, explicit port selection, stop, single and multiple SysEx messages with a 50 ms interval. Mock-port tests checked lengths, ordering and disconnect handling. Actual placement and playback require hardware acceptance. |
 | FM-1 | The shared plan selects the parts. Concert-pitch chords, Core/LPC, four accompaniment pitches and original quarter-note timing travel independently of Digitone speed. The browser stages and reads back the new set before committing. Firmware emulator tested legacy compatibility, multiple parts, persistence, replacement and deletion. |
 | Harmony AI Lab | Excluded from the public edition by owner decision. |
 
 The chart engine, Python runtime and dependencies ship with the app. Song generation requires no EUB server, API credentials or database. Official playlist import fetches the selected public list. Build output includes the corresponding source archive and license. The Web application uses GPL-3.0-only. The vendored fm1-base client carries its original MPL-2.0 notices. The owner authorized distribution of the pinned toolkit and its BASE_EMPTY template. Firmware sources and device captures are separate from this release.
+
+Run npm run package to create release/changes-web.zip for the site. Deploy the exact tagged artifact.
