@@ -174,18 +174,37 @@ export function studio(root,song,lang,preferences,save,edit) {
     const range=field(output,t('Overwrite area selected on Digitone II','Digitone II本体で選んだ上書き範囲'),element('input'));
     range.placeholder='A01–A02';
     const target=field(output,t('Send to','送信先'),select([['digitone','Digitone II'],['fm','Emiuet Session FM-1']],'digitone'));
+    const transfer=element('p');
+    transfer.setAttribute('role','status');
+    let transferring=false;
     async function fm(remove) {
-      const p=port(),input=access?.inputs.get(inputs.value);
-      if(!input) throw Error(t('Select the FM-1 input','FM-1入力を選択してください'));
-      if(!remove && !result.fm_parts.length)throw Error(result.fm_error || 'Unsupported FM-1 song');
-      const parts=remove?[]:result.fm_parts.map(data=>Uint8Array.from(atob(data),c=>c.charCodeAt(0)));
-      const action=remove?t('Delete all parts','全パートを削除'):t('Replace all parts','全パートを更新');
-      const saved=await updateLibrary(input,p,song.id,parts,()=>confirm([p.name,action,song.title].join('\n')));
-      status.textContent=({saved:t('Saved and verified','保存・照合済み'),unchanged:t('Already matches','保存内容は同一です'),cancelled:t('Cancelled','キャンセルしました')})[saved];
+      if(transferring)return;
+      transferring=true;
+      transfer.textContent=t('Opening MIDI ports…','MIDIポートを開いています…');
+      try {
+        const p=port(),input=access?.inputs.get(inputs.value);
+        if(!input) throw Error(t('Select the FM-1 input','FM-1入力を選択してください'));
+        if(!remove && !result.fm_parts.length)throw Error(result.fm_error || 'Unsupported FM-1 song');
+        const parts=remove?[]:result.fm_parts.map(data=>Uint8Array.from(atob(data),c=>c.charCodeAt(0)));
+        const action=remove?t('Delete all parts','全パートを削除'):t('Replace all parts','全パートを更新');
+        const saved=await updateLibrary(input,p,song.id,parts,()=>confirm([p.name,action,song.title].join('\n')),step=>{
+          transfer.textContent=({
+            hello:t('Waiting for FM-1…','FM-1の応答を待っています…'),
+            library:t('Reading song library…','本体の曲一覧を読み取っています…'),
+            stage:t('Transferring and checking song data…','曲データを転送・照合しています…'),
+            apply:t('Saving and verifying…','本体に保存して読み戻しています…')
+          })[step];
+        });
+        transfer.textContent=({saved:t('Saved and verified','保存・照合済み'),unchanged:t('Already matches','保存内容は同一です'),cancelled:t('Cancelled','キャンセルしました')})[saved];
+      } catch(error) {
+        const hint=error.code==='silent'?t('Check both FM-1 ports, power and firmware.','FM-1の電源、入出力ポート、ファーム版を確認してください。'):
+          error.code==='busy'?t('Stop playback and release the keys before retrying.','本体の再生を止め、キーを離して再送してください。'):'';
+        transfer.textContent=[transfer.textContent,error.message,hint].filter(Boolean).join(' ');
+      } finally {transferring=false;}
     }
     const remove=button(output,'Delete song from FM-1','FM-1からこの曲を削除',()=>fm(true));
     remove.hidden=true;
-    target.onchange=()=>{remove.hidden=target.value!=='fm';existing.parentNode.hidden=!remove.hidden;range.parentNode.hidden=!remove.hidden;};
+    target.onchange=()=>{transfer.textContent='';remove.hidden=target.value!=='fm';existing.parentNode.hidden=!remove.hidden;range.parentNode.hidden=!remove.hidden;};
     button(output,'Send','送信',async()=>{
       if(target.value==='fm')return fm(false);
       const p=port();
@@ -210,6 +229,7 @@ export function studio(root,song,lang,preferences,save,edit) {
       await sendPatterns(p,outgoing,controller.signal);
       status.textContent=t('Send requested. Verify placement and playback on the instrument.','送信を要求しました。本体で配置と再生を確認してください。');
     });
+    output.append(transfer);
   }
   return ()=>{closed=true;reset();};
 }

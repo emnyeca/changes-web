@@ -20,22 +20,27 @@ export function mergeLibrary(before,id,parts,room) {
   for(const r of records){result.set(r,offset);offset+=r.length;}
   return result;
 }
-export async function updateLibrary(input,output,id,parts,approve) {
+export async function updateLibrary(input,output,id,parts,approve,progress=()=>{}) {
+  await Promise.all([input.open?.(),output.open?.()]);
   const client=new Companion(input,output);
   try {
+    progress("hello");
     const hello=await client.hello();
     if(!/^FM-1_9362\d+$/.test(hello.identity))throw Error('Select Emiuet Session FM-1 / 対応するFM-1を選択してください');
+    progress("library");
     const files=await client.files();
     const [current,stage,apply]=['library-v2','library-stage','library-apply'].map(name=>files.find(f=>f.name===name));
-    if(!current||!stage||!apply)throw Error('Update FM-1 firmware / FM-1のファームを更新してください');
+    if(!current||!stage||!apply)throw Error('Install FM-1 v0.3.0-test / FM-1のファームを更新してください');
     const before=await client.read(current.index);
     const next=mergeLibrary(before,id,parts,stage.room);
     if(same(before,next))return 'unchanged';
     if(!approve())return 'cancelled';
-    await client.write(stage.index,next);
+    progress("stage");
+    await client.write(stage.index,next,undefined,{chunk:Math.min(hello.writeMax || 128,128)});
     if(!same(await client.read(stage.index),next))throw Error('Staging verification failed / 保存前の照合に失敗しました');
     const token=new Uint8Array(8),view=new DataView(token.buffer);
     view.setUint32(0,crc32(before),true);view.setUint32(4,crc32(next),true);
+    progress("apply");
     await client.write(apply.index,token);
     if(!same(await client.read(current.index),next))throw Error('Read-back differs / 保存結果の読み戻しが一致しません');
     return 'saved';
