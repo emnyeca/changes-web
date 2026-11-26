@@ -100,7 +100,7 @@ byId('new').onclick=handle(async()=>{
 });
 byId('lang').onchange=handle(e=>commit({...state,lang:e.target.value}));
 byId('search').oninput=render;
-async function importCharts(files) {
+async function importCharts(files, progress) {
   const songs=[];
   const expanded=await expandFiles(files);
   const stem=name=>name.replace(/\.[^.]+$/,'').trim().toLowerCase();
@@ -117,9 +117,16 @@ async function importCharts(files) {
     if (!uri) {add(input); continue;}
     const parts=decodeURIComponent(uri[2]).split('===');
     if(parts.length>1) parts.pop();
+    let converted=0,lastPaint=performance.now();
     for (const part of parts) {
       const song=new Song(part,uri[1]==='book');
       add(Converter.convert(song),song.title);
+      converted++;
+      if(progress && (performance.now()-lastPaint>80 || converted===parts.length)){
+        progress(converted,parts.length);
+        await new Promise(resolve=>setTimeout(resolve,0));
+        lastPaint=performance.now();
+      }
     }
   }
   selected=songs[0]?.id;
@@ -137,17 +144,27 @@ for(const [id,name] of Object.entries(playlists))byId('playlist').add(new Option
 byId('fetch').onclick=handle(async()=>{
   const id=byId('playlist').value;
   if(!Object.hasOwn(playlists,id))return;
+  const output=byId('playlistProgress'),button=byId('fetch');
+  button.disabled=true;
+  const ja=state.lang==='ja';
+  output.textContent=ja?'プレイリストを取得中です。曲数が多い場合は、このページを開いたままお待ちください。':'Downloading the playlist. For large lists, please keep this page open.';
   const url='https://blog.karimratib.me/demos/chirp/data/'+id+'.txt';
   try {
     const response=await fetch(url,{credentials:'omit',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(30000)});
     if(!response.ok)throw Error(String(response.status));
-    await importCharts([new File([await response.blob()],id+'.txt')]);
+    await importCharts([new File([await response.blob()],id+'.txt')],(n,total)=>{
+      output.textContent=n===total?(ja?'ライブラリに保存中…':'Saving to the library…'):
+        (ja?'楽曲を読み込み中 ':'Importing songs ')+n+' / '+total;
+    });
+    output.textContent=ja?'取り込みが完了しました。':'Playlist imported.';
+
   }catch(error) {
+    output.textContent=ja?'取り込みを完了できませんでした。':'Import did not finish.';
     const manual=document.createElement('a');
     manual.href=url;manual.target='_blank';manual.rel='noreferrer';
     manual.textContent=state.lang==='ja'?'元ファイルを保存して取り込む':'Save the source file and import it';
     byId('status').replaceChildren(document.createTextNode(error.message+' '),manual);
-  }
+  } finally {button.disabled=false;}
 });
 
 byId('save').onclick=handle(()=>{
