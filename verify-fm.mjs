@@ -35,6 +35,22 @@ try {
           await updateLibrary(input,output,id,[part(0),part(1)],()=>true);
           await updateLibrary(input,output,id.slice(0,-1)+'2',[part(0,2)],()=>true);
         } else if(operation==='replace')await updateLibrary(input,output,id,[part(0)],()=>true);
+        else if(operation==='compact'){
+          // Replace both legacy parts by one 72-bar Cmaj7 chart on the song-only endpoint.
+          const head=part(0).slice(0,27);
+          head[24]=0;head[25]=27;head[26]=0;
+          const name=new TextEncoder().encode('72 bars');
+          const sequence=Array.from({length:72},(_,i)=>[i?96:0,0]).flat();
+          const record=Uint8Array.of(...head,...name,0,72,0,1,0,145,88,171,48,55,59,64,67,109,97,106,55,0,...sequence);
+          new DataView(record.buffer).setUint16(0,record.length,true);
+          const slot=files.find(f=>f.name==='song-upsert');
+          await client.write(slot.index,record);
+          const read=await client.read(slot.index);
+          if(read.length!==record.length || !read.every((x,i)=>x===record[i]))throw Error('single-song readback');
+          record[record.length-1]=2;
+          let refused=false;try{await client.write(slot.index,record);}catch{refused=true;}
+          if(!refused || (await client.read(slot.index)).at(-1)!==0)throw Error('malformed song replaced live data');
+        }
         else if(operation==='delete')await updateLibrary(input,output,id,[],()=>true);
         const data=await client.read(live.index);
         const entries=[];
@@ -44,9 +60,12 @@ try {
     },operation);
   }
   assert.deepEqual(await check('initial'),[[1,0],[1,1],[2,0]]);
+  // The raw-flash emulator persists changed sectors on its two-second timer.
+  await page.waitForTimeout(2500);
   await page.reload();await page.locator('#go').click();
   assert.deepEqual(await check('reboot'),[[1,0],[1,1],[2,0]]);
   assert.deepEqual(await check('replace'),[[2,0],[1,0]]);
+  assert.deepEqual(await check('compact'),[[2,0],[1,0]]);
   assert.deepEqual(await check('delete'),[[2,0]]);
   console.log('FM-1 emulator: legacy write, multipart upload, reboot, replacement and deletion passed');
 } finally {await browser.close();}

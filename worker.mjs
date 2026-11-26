@@ -2,7 +2,7 @@
 const runtime = (async () => {
   const py = await loadPyodide({indexURL:new URL('./runtime/',self.location.href).href});
   await py.loadPackage('pyyaml');
-  const response = await fetch(new URL('./engine.zip',self.location.href));
+  const response = await fetch(new URL('./engine.zip'+self.location.search,self.location.href));
   if (!response.ok) throw Error('Engine download failed');
   py.unpackArchive(await response.arrayBuffer(),'zip');
   py.runPython('import json; from engine import generate');

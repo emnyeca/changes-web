@@ -63,3 +63,52 @@ def encode_parts(song, plan, source_id):
         body+=label(part.pattern_name)+b"".join(entries)
         parts.append(base64.b64encode(struct.pack("<H",len(body)+2)+body).decode())
     return parts
+
+
+def varuint(value):
+    data = bytearray()
+    while value >= 128:
+        data.append(128 | (value & 127))
+        value >>= 7
+    data.append(value)
+    return data
+
+
+def encode_song(song, source_id):
+    """One continuous FM-1 chart, independent of Digitone patterns and tracks."""
+    meters = {(m.meter_numerator, m.meter_denominator) for m in song.measures}
+    if len(meters) != 1:
+        raise ValueError("FM-1: mixed meters / 拍子が変わる曲は転送できません")
+    beats, denominator = meters.pop()
+    if denominator != 4 or not 1 <= beats <= 12:
+        raise ValueError("FM-1: unsupported meter / 未対応の拍子です")
+    bpm = song.performance_tempo
+    if not 30 <= bpm <= 300 or bpm.denominator != 1:
+        raise ValueError("FM-1: set a whole-number tempo from 30 to 300 / テンポは整数30〜300で指定してください")
+    events = [(m.absolute_start_quarters + e.offset_quarters, e.symbol)
+              for m in song.measures for e in m.harmony]
+    if not events or events[0][0] != 0 or len(events) > 1024:
+        raise ValueError("FM-1: expected 1–1024 chord events starting on beat one / 曲頭から最大1024コードに対応します")
+    symbols = [symbol for _, symbol in events]
+    dictionary = {}
+    sequence = bytearray()
+    previous = 0
+    for i, (at, symbol) in enumerate(events):
+        onset = tick(at)
+        if i and onset <= previous:
+            raise ValueError("FM-1: chord times overlap / コードの開始時刻が重複しています")
+        core = resolver_core_pitch_classes(symbol)
+        lpc, _ = resolve_scale_collection_with_retry(symbols, i)
+        masks = sum(1 << n for n in set(core)) | (sum(1 << n for n in set(lpc)) << 12)
+        entry = masks.to_bytes(3, "little") + bytes(voicing(symbol, core)) + label(symbol)
+        sequence += varuint(onset - previous) + varuint(dictionary.setdefault(entry, len(dictionary)))
+        previous = onset
+    title = song.title.encode("ascii", "replace")[:31] or b"Song"
+    duration = tick(song.measures[-1].absolute_start_quarters + beats)
+    key = pitch_class_to_semitone(song.working_key or "C")
+    header = UUID(source_id).bytes + struct.pack("<BHBBBHB", 0, int(bpm), key, 0, beats, duration, 0)
+    body = header + bytes(max(32, min(126, c)) for c in title) + b"\0"
+    body += struct.pack("<HH", len(events), len(dictionary)) + b"".join(dictionary) + sequence
+    if len(body) + 2 > 16384:
+        raise ValueError("FM-1: song exceeds 16 KiB / 1曲の上限16 KiBを超えています")
+    return base64.b64encode(struct.pack("<H", len(body) + 2) + body).decode()

@@ -42,6 +42,11 @@ def generate(request):
     if not song.measures:
         raise ValueError("Select a section / セクションを選んでください")
     shift = int(request.get("transpose", 0))
+    if request.get("action") == "fm-song" and request.get("target_key") not in (None, ""):
+        from changes.note import pitch_class_to_semitone
+        if not song.working_key:
+            raise ValueError("Chart key unknown: use Transpose (semitones) / 譜面の調が未指定です。半音単位の移調を使用してください")
+        shift = (int(request["target_key"]) - pitch_class_to_semitone(song.working_key)) % 12
     if shift:
         names = "C Db D Eb E F Gb G Ab A Bb B".split()
         def transposed(symbol):
@@ -51,6 +56,9 @@ def generate(request):
                 return names[(pc + (accidental=="#") - (accidental=="b") + shift) % 12]
             return re.sub(r"(?:(?<=/)|^)([A-G])([#b]?)", pitch, symbol)
         song = transpose_song_model_preserving_structure(song, transposed, transposed)
+    if request.get("action") == "fm-song":
+        from fm_parts import encode_song
+        return encode_song(song, request["id"])
     settings = AppSettings(**request.get("settings", {}))
     compiled = compile_song_for_ui(song, settings)
     if request.get("mode", "linear") == "bundle":

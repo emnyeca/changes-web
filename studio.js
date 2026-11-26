@@ -1,4 +1,5 @@
 import {updateLibrary} from './fm_library.js';
+import {Companion,findCompanions} from './vendor/companion/companion.js';
 import {messages,sendPatterns,preview} from './midi.js';
 
 function element(tag,text) {
@@ -7,6 +8,7 @@ function element(tag,text) {
   return node;
 }
 const defaults={cloud_tracks:[1,2,3,4,5,6],bass_track:7,chord_track:8,cloud_center_midi:60,bass_center_midi:36,chord_center_midi:60,cloud_spread_min:14,cloud_spread_max:16,cloud_average_tolerance:2,cloud_trigger_policy:'hold_until_change',bass_trigger_policy:'hold_until_change',chord_trigger_policy:'retrigger',pattern_change_policy:'auto_song_mode'};
+let fmSending=false;
 export function studio(root,song,lang,preferences,save,edit) {
   const t=(en,ja)=>lang==='ja'?ja:en;
   let worker,stop,access,controller,generated,closed=false;
@@ -36,10 +38,65 @@ export function studio(root,song,lang,preferences,save,edit) {
     return s;
   };
   const mode=field(panel,t('Arrangement','分割方式'),select([['linear','Linear / Auto Split'],['bundle','Bundle by Section']],preferences.mode||'linear'));
+  const quick=element('section');
+  root.querySelector('h2').after(quick);
+  const pitchNames='C Db D Eb E F Gb G Ab A Bb B'.split(' ');
+  const targetKey=field(quick,t('FM-1 key','FM-1のキー'),select([
+    ['',t('Chart key + transpose','譜面のキー＋移調設定')],...pitchNames.map((name,i)=>[String(i),name])
+  ],''));
   const transpose=field(panel,t('Transpose (semitones)','移調（半音）'),element('input'));
   transpose.type='number'; transpose.min=-24;transpose.max=24;transpose.value=song.transpose||0;
-  const tempo=field(panel,t('Performance BPM','演奏BPM'),element('input'));
+  const tempo=field(quick,t('Performance BPM','演奏BPM'),element('input'));
   tempo.type='number';tempo.min=1;tempo.max=999;tempo.value=song.tempo||'';tempo.placeholder=t('From chart','譜面のテンポ');
+  const devices=field(quick,t('FM-1 device','FM-1本体'),select([],''));
+  devices.parentNode.hidden=true;
+  const capacity=element('small');
+  button(quick,'Send song to FM-1','FM-1に曲を送信',async()=>{
+    if(fmSending)throw Error(t('Wait for the current FM-1 transfer.','進行中のFM-1転送が終わるまでお待ちください。'));
+    if(!navigator.requestMIDIAccess)throw Error(t('Use Chrome or Edge with Web MIDI','Web MIDI対応のChromeまたはEdgeを使用してください'));
+    fmSending=true;
+    let client,encoder;
+    try{
+      status.textContent=t('Finding FM-1…','FM-1を検索中…');
+      access=await navigator.requestMIDIAccess({sysex:true});
+      const found=(await findCompanions(access)).filter(p=>/^FM-1_9362\d+$/.test(p.hello.identity));
+      if(closed)return;
+      if(!found.length)throw Error(t('Connect Emiuet Session FM-1 via USB and retry.','FM-1をUSBで接続して再送してください。'));
+      let device=found[0];
+      if(found.length>1){
+        const selected=devices.value;
+        devices.replaceChildren(new Option('—',''),...found.map(p=>new Option(p.name,p.input.id)));
+        device=found.find(p=>p.input.id===selected);
+        devices.parentNode.hidden=false;
+        if(!device)throw Error(t('Select an FM-1 and send again.','送信するFM-1を選んで再送してください。'));
+        devices.value=selected;
+      }else devices.parentNode.hidden=true;
+      client=new Companion(device.input,device.output,{timeout:15000});
+      const files=await client.files(),slot=files.find(f=>f.name==='song-upsert');
+      if(!slot)throw Error(t('Install FM-1 firmware 0.13.0-test or later.','FM-1を0.13.0-test以降に更新してください。'));
+      status.textContent=t('Preparing song…','楽曲を生成中…');
+      encoder=new Worker(new URL('worker.mjs?fm=13',document.baseURI),{type:'module'});
+      const data=await new Promise((resolve,reject)=>{
+        encoder.onerror=e=>reject(Error(e.message));
+        encoder.onmessage=e=>e.data.error?reject(Error(e.data.error)):resolve(e.data.result);
+        encoder.postMessage({...song,action:'fm-song',target_key:targetKey.value,tempo:Number(tempo.value)||undefined,transpose:Number(transpose.value)});
+      });
+      if(closed)return;
+      const bytes=Uint8Array.from(atob(data),c=>c.charCodeAt(0));
+      status.textContent=t('Saving on FM-1…','FM-1に保存中…');
+      await client.write(slot.index,bytes,undefined,{chunk:128});
+      const read=await client.read(slot.index);
+      if(read.length!==bytes.length || !bytes.every((v,i)=>v===read[i]))throw Error(t('Read-back differs','保存内容の照合に失敗しました'));
+      const library=(await client.files()).find(f=>f.name==='library-v2');
+      if(library)capacity.textContent=t('Free on FM-1: ','FM-1の空き容量：')+((library.room-library.size)/1024).toFixed(1)+' KiB';
+      status.textContent=t('Saved and verified','保存・照合済み');
+    }catch(error){
+      if(error.code==='busy')throw Error(t('Stop playback and release the keys, then retry.','再生を止め、鍵盤を離して再送してください。'));
+      throw error;
+    }finally{encoder?.terminate();client?.close();fmSending=false;}
+  });
+  quick.append(status,capacity);
+  quick.oninput=()=>{reset();status.textContent='';};
   const names={cloud_tracks:'Cloud 6声のトラック（0で無効）',bass_track:'Bassトラック',chord_track:'Chordトラック',cloud_center_midi:'Cloud中心音（MIDI）',bass_center_midi:'Bass基準音（MIDI）',chord_center_midi:'Chord中心音（MIDI）',cloud_spread_min:'Cloud最小音程幅',cloud_spread_max:'Cloud最大音程幅',cloud_average_tolerance:'Cloud平均音高の許容幅',cloud_trigger_policy:'Cloudトリガー',bass_trigger_policy:'Bassトリガー',chord_trigger_policy:'Chordトリガー',pattern_change_policy:'パターン遷移'};
   const policies={auto_song_mode:'ソングモード用に自動設定',off:'オフ',hold_until_change:'変化まで保持',retrigger:'毎回発音'};
   const settings={...defaults,...preferences.settings};

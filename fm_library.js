@@ -14,7 +14,7 @@ export function mergeLibrary(before,id,parts,room) {
   }
   const records=[...kept,...parts];
   const size=records.reduce((sum,r)=>sum+r.length,0);
-  if(size>room || records.length>33 || records.slice(1).reduce((n,r)=>n+r[26],0)>192)throw Error('Library full / 保存容量を超えています');
+  if(size>room || (room<=3815 ? records.length>33 || records.slice(1).reduce((n,r)=>n+r[26],0)>192 : records.length>253))throw Error('Library full / 保存容量を超えています');
   const result=new Uint8Array(size);
   let offset=0;
   for(const r of records){result.set(r,offset);offset+=r.length;}
